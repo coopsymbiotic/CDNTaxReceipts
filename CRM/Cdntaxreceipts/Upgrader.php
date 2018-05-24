@@ -16,10 +16,10 @@ class CRM_Cdntaxreceipts_Upgrader extends CRM_Cdntaxreceipts_Upgrader_Base {
 
     $email_message = '{$contact.email_greeting_display},
 
-Attached please find your official tax receipt for income tax purposes.
+{ts domain="org.civicrm.cdntaxreceipts"}Attached please find your official tax receipt for income tax purposes.{/ts}
 
 {$orgName}';
-    $email_subject = 'Your tax receipt {$receipt.receipt_no}';
+    $email_subject = '{ts 1=$receipt.receipt_no domain="org.civicrm.cdntaxreceipts"}Your tax receipt %1{/ts}';
 
     $this->_create_message_template($email_message, $email_subject);
   }
@@ -89,8 +89,20 @@ AND COLUMN_NAME = 'receipt_status'");
     return TRUE;
   }
 
+  public function upgrade_1503() {
+    $this->ctx->log->info('Applying update 1501 - Updating email template to make them multilingual');
 
-  function _create_message_template($email_message, $email_subject) {
+    $email_message = '{$contact.email_greeting_display},
+
+{ts domain="org.civicrm.cdntaxreceipts"}Attached please find your official tax receipt for income tax purposes.{/ts}
+
+{$orgName}';
+    $email_subject = '{ts 1=$receipt.receipt_no domain="org.civicrm.cdntaxreceipts"}Your tax receipt %1{/ts}';
+    return $this->_create_message_template($email_message, $email_subject, TRUE);
+  }
+
+
+  function _create_message_template($email_message, $email_subject, $update = FALSE) {
 
     $html_message = '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
@@ -124,70 +136,77 @@ AND COLUMN_NAME = 'receipt_status'");
 </body>
 </html>';
 
-    // create message template for email that accompanies tax receipts
-    $params = array(
-      'sequential' => 1,
-      'name' => 'msg_tpl_workflow_cdntaxreceipts',
-      'title' => 'Message Template Workflow for CDN Tax Receipts',
-      'description' => 'Message Template Workflow for CDN Tax Receipts',
-      'is_reserved' => 1,
-      'is_active' => 1,
-      'api.OptionValue.create' => array(
-        '0' => array(
-          'label' => 'CDN Tax Receipts - Email Single Receipt',
-          'value' => 1,
-          'name' => 'cdntaxreceipts_receipt_single',
-          'is_reserved' => 1,
-          'is_active' => 1,
-          'format.only_id' => 1,
+    if ($update) {
+      // if an exception is thrown, most likely the option group already exists,
+      // in which case we'll just use that one
+      $optionValueMsgSingleId = civicrm_api3('OptionValue', 'getvalue', array(
+        'name' => 'cdntaxreceipts_receipt_single',
+        'return' => 'id',
+      ));
+      $optionValueMsgAggregateId = civicrm_api3('OptionValue', 'getvalue', array(
+        'name' => 'cdntaxreceipts_receipt_aggregate',
+        'return' => 'id',
+      ));
+    }
+    // create options
+    else {
+
+      // create message template for email that accompanies tax receipts
+      $params = array(
+        'sequential' => 1,
+        'name' => 'msg_tpl_workflow_cdntaxreceipts',
+        'title' => 'Message Template Workflow for CDN Tax Receipts',
+        'description' => 'Message Template Workflow for CDN Tax Receipts',
+        'is_reserved' => 1,
+        'is_active' => 1,
+        'api.OptionValue.create' => array(
+          '0' => array(
+            'label' => ts('CDN Tax Receipts - Email Single Receipt', array('domain' => 'org.civicrm.cdntaxreceipts')),
+            'value' => 1,
+            'name' => 'cdntaxreceipts_receipt_single',
+            'is_reserved' => 1,
+            'is_active' => 1,
+            'format.only_id' => 1,
+          ),
+          '1' => array(
+            'label' => ts('CDN Tax Receipts - Email Annual/Aggregate Receipt', array('domain' => 'org.civicrm.cdntaxreceipts')),
+            'value' => 2,
+            'name' => 'cdntaxreceipts_receipt_aggregate',
+            'is_reserved' => 1,
+            'is_active' => 1,
+            'format.only_id' => 1,
+          ),
         ),
-        '1' => array(
-          'label' => 'CDN Tax Receipts - Email Annual/Aggregate Receipt',
-          'value' => 2,
-          'name' => 'cdntaxreceipts_receipt_aggregate',
-          'is_reserved' => 1,
-          'is_active' => 1,
-          'format.only_id' => 1,
-        ),
-      ),
-    );
-    $result = civicrm_api3('OptionGroup', 'create', $params);
+      );
+
+      $result = civicrm_api3('OptionGroup', 'create', $params);
+      $optionValueMsgSingleId = $result['values'][0]['api.OptionValue.create'][0];
+      $optionValueMsgAggregateId = $result['values'][0]['api.OptionValue.create'][1];
+    }
 
     $params = array(
-      'msg_title' => 'CDN Tax Receipts - Email Single Receipt',
+      'msg_title' => ts('CDN Tax Receipts - Email Single Receipt', array('domain' => 'org.civicrm.cdntaxreceipts')),
       'msg_subject' => $email_subject,
       'msg_text' => $email_message,
       'msg_html' => $html_message,
-      'workflow_id' => $result['values'][0]['api.OptionValue.create'][0],
-      'is_default' => 1,
-      'is_reserved' => 0,
+      'workflow_id' => $optionValueMsgSingleId,
+      'is_default' => 0,
+      'is_reserved' => 1,
     );
     civicrm_api3('MessageTemplate', 'create', $params);
 
     $params = array(
-      'msg_title' => 'CDN Tax Receipts - Email Annual/Aggregate Receipt',
+      'msg_title' => ts('CDN Tax Receipts - Email Annual/Aggregate Receipt', array('domain' => 'org.civicrm.cdntaxreceipts')),
       'msg_subject' => $email_subject,
       'msg_text' => $email_message,
       'msg_html' => $html_message,
-      'workflow_id' => $result['values'][0]['api.OptionValue.create'][1],
-      'is_default' => 1,
-      'is_reserved' => 0,
+      'workflow_id' => $optionValueMsgAggregateId,
+      'is_default' => 0,
+      'is_reserved' => 1,
     );
     civicrm_api3('MessageTemplate', 'create', $params);
 
     return TRUE;
   }
-
-  /**
-   * Example: Run an external SQL script
-   *
-   * @return TRUE on success
-   * @throws Exception
-  public function upgrade_4201() {
-    $this->ctx->log->info('Applying update 4201');
-    // this path is relative to the extension base dir
-    $this->executeSqlFile('sql/upgrade_4201.sql');
-    return TRUE;
-  } // */
 
 }
